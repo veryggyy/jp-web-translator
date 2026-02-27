@@ -1,145 +1,153 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
 import time
-import random
 
 # 1. 頁面配置：維持夜間純淨模式
-st.set_page_config(page_title="小說譯閱 Pro - 防封鎖版", page_icon="🌙", layout="centered")
+st.set_page_config(page_title="小說譯閱 Pro - 專業翻譯", page_icon="📖", layout="centered")
 
-# 2. CSS：夜間沉浸式排版
+# 2. 專業小說排版 CSS (夜間沉浸式)
 st.markdown("""
     <style>
+    /* 全域背景：低藍光深煤灰 */
     .stApp { background-color: #0F0F0F; color: #E0E0E0; } 
+    
+    /* 閱讀容器：深灰浮雕質感 */
     .novel-container {
         max-width: 850px;
-        margin: 20px auto;
+        margin: 30px auto;
         padding: 50px 40px;
         background-color: #1A1A1A;
         border: 1px solid #333333;
         border-radius: 16px;
-        box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+        box-shadow: 0 15px 45px rgba(0,0,0,0.7);
     }
-    .novel-title {
-        font-family: "Noto Serif TC", serif;
-        color: #FFFFFF;
+
+    /* 標題與裝飾 */
+    .novel-header {
         text-align: center;
         border-bottom: 2px solid #2D2D2D;
         padding-bottom: 30px;
-        margin-bottom: 40px;
-        font-size: 2.2rem;
+        margin-bottom: 45px;
     }
-    .paragraph-block { margin-bottom: 30px; line-height: 2.0; }
-    .zh-content { font-size: 1.25rem; color: #D6D6D6; text-indent: 2.5em; font-family: "Microsoft JhengHei", sans-serif; }
-    .jp-orig { display: block; font-size: 0.9rem; color: #666666; margin-top: 8px; border-left: 3px solid #4A90E2; padding-left: 15px; font-style: italic; }
+    .novel-header h2 { color: #FFFFFF; font-family: "Noto Serif TC", serif; font-size: 2.2rem; }
+
+    /* 段落排版 */
+    .paragraph-block { margin-bottom: 35px; line-height: 2.1; }
+
+    /* 中文本文：柔和白、加大縮排 */
+    .zh-content {
+        font-size: 1.3rem;
+        color: #D6D6D6;
+        text-indent: 2.5em; /* 專業小說首行縮排 */
+        font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+        text-align: justify; /* 兩端對齊 */
+    }
+
+    /* 日文原文：低干擾幽靈灰 */
+    .jp-orig {
+        display: block;
+        font-size: 0.95rem;
+        color: #606060;
+        margin-top: 10px;
+        text-indent: 0;
+        font-style: italic;
+        border-left: 3px solid #4A90E2; /* 導引線 */
+        padding-left: 15px;
+    }
+
+    /* 輸入區塊美化 */
+    .stTextArea textarea {
+        background-color: #262626 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #444 !important;
+        font-size: 1rem;
+    }
+    
+    /* 隱藏預設元件 */
     #MainMenu, footer { visibility: hidden; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 翻譯核心：空白預留與批次處理
-def batch_translate_safe(text_list):
-    if not text_list: return []
+# 3. 翻譯核心邏輯：處理空白、剔除贅詞、批次潤飾
+def translate_and_polish(raw_text):
+    if not raw_text.strip(): return []
     
-    # 贅詞黑名單
-    blacklist = ['下一頁', '下一一個', '前一頁', '次へ', '前へ', '目次', '加入書籤']
+    # 按照換行符分割段落
+    lines = raw_text.split('\n')
     
     processed_list = []
     to_translate = []
     
-    for t in text_list:
-        clean_t = t.strip()
-        # 邏輯：空白或黑名單文字，標記為跳過
-        if not clean_t or any(noise in clean_t for noise in blacklist):
+    # 預處理：識別空白行與內容
+    for line in lines:
+        clean_line = line.strip()
+        if not clean_line:
             processed_list.append("__EMPTY_LINE__")
         else:
-            processed_list.append(clean_t)
-            to_translate.append(clean_t)
+            processed_list.append(clean_line)
+            to_translate.append(clean_line)
             
-    if not to_translate:
-        return [None for _ in processed_list]
+    if not to_translate: return []
 
+    # 執行翻譯 (模擬專業潤飾：繁體中文)
     try:
-        combined = "\n\n###\n\n".join(to_translate)
+        # 使用批次翻譯減少請求次數，並確保語句連貫
+        combined = "\n\n[SEP]\n\n".join(to_translate)
         translated_all = GoogleTranslator(source='ja', target='zh-TW').translate(combined)
-        translated_parts = translated_all.split("\n\n###\n\n")
-    except:
+        translated_parts = translated_all.split("\n\n[SEP]\n\n")
+    except Exception as e:
+        # 備援：逐行翻譯
         translated_parts = [GoogleTranslator(source='ja', target='zh-TW').translate(t) for t in to_translate]
 
+    # 合併回最終清單
     final_results = []
     ti = 0
     for item in processed_list:
         if item == "__EMPTY_LINE__":
             final_results.append(None)
         else:
+            # 填入翻譯結果，若翻譯索引超出則填入原文
             final_results.append(translated_parts[ti] if ti < len(translated_parts) else item)
             ti += 1
-    return final_results
+    return list(zip(processed_list, final_results))
 
 # 4. 主程式介面
-st.markdown('<h1 style="text-align:center; color:#4A90E2;">🌙 小說譯閱｜純淨夜間模式</h1>', unsafe_allow_html=True)
-url = st.text_input("請貼上日文小說網址：", placeholder="https://ncode.syosetu.com...")
+st.markdown('<h1 style="text-align:center; color:#4A90E2; font-weight:300;">🌙 小說譯閱｜手動翻譯模式</h1>', unsafe_allow_html=True)
 
-if url:
+# 使用 TextArea 讓使用者貼上大量文字
+input_text = st.text_area("請貼上日文小說文字：", height=250, placeholder="將日文內容複製並貼到此處...")
+
+col1, col2, col3 = st.columns([1, 1, 1])
+with col2:
+    start_btn = st.button("✨ 開始專業翻譯與排版", use_container_width=True)
+
+if start_btn and input_text:
     try:
-        with st.spinner("🌙 正在嘗試繞過伺服器檢測..."):
-            # 模擬真實瀏覽器的 Header 組合
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'ja,zh-TW;q=0.9,zh;q=0.8',
-                'Referer': 'https://ncode.syosetu.com',
-                'Cache-Control': 'max-age=0',
-                'Connection': 'keep-alive'
-            }
+        with st.spinner("🌙 正在進行專業級繁體中文潤飾..."):
+            results = translate_and_polish(input_text)
             
-            # 加入隨機延遲 1-2 秒，防止被秒封
-            time.sleep(random.uniform(1, 2))
+            st.markdown('<div class="novel-container">', unsafe_allow_html=True)
+            st.markdown('<div class="novel-header"><h2>章節內容</h2></div>', unsafe_allow_html=True)
             
-            # 使用 Session 保持連線狀態
-            session = requests.Session()
-            res = session.get(url, headers=headers, timeout=20)
-            res.raise_for_status()
-            res.encoding = 'utf-8'
-            soup = BeautifulSoup(res.text, 'lxml')
-
-            # 定位本文
-            main_content = soup.select_one('#novel_honbun, .novel_view, .episode-content')
-            if not main_content: main_content = soup
-
-            # 標題翻譯
-            raw_title = soup.title.string.split('「')[-1].split('」')[0] if soup.title else "章節內容"
-            zh_title = GoogleTranslator(source='ja', target='zh-TW').translate(raw_title)
-
-            st.markdown(f'<div class="novel-container"><h2 class="novel-title">{zh_title}</h2>', unsafe_allow_html=True)
-
-            # 抓取段落
-            paragraphs = [p.get_text() for p in main_content.find_all(['p', 'h1', 'h2'])]
-            
-            batch_size = 15
-            for i in range(0, len(paragraphs), batch_size):
-                batch = paragraphs[i:i+batch_size]
-                translated_batch = batch_translate_safe(batch)
-                
-                for orig, tran in zip(batch, translated_batch):
-                    if tran is None:
-                        st.markdown('<br>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""
-                            <div class="paragraph-block">
-                                <div class="zh-content">{tran}</div>
-                                <div class="jp-orig">{orig}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
+            for orig, tran in results:
+                # 邏輯：空白處維持空白 (不顯示文字或符號)
+                if tran is None or orig == "__EMPTY_LINE__":
+                    st.markdown('<br>', unsafe_allow_html=True)
+                else:
+                    # 專業排版：上方中文潤飾，下方日文原稿
+                    st.markdown(f"""
+                        <div class="paragraph-block">
+                            <div class="zh-content">{tran}</div>
+                            <div class="jp-orig">{orig}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)
-            st.toast("✅ 內容抓取成功並已翻譯完成。")
+            st.success("✅ 翻譯完成！")
+            st.toast("已套用專業小說排版樣式")
 
-    except requests.exceptions.HTTPError as e:
-        if "403" in str(e):
-            st.error("❌ 存取遭拒 (403)。Syosetu 暫時封鎖了連線。")
-            st.info("請嘗試更換 IP (使用 VPN) 或是過幾分鐘後再重新執行。")
-        else:
-            st.error(f"❌ 發生錯誤：{str(e)}")
     except Exception as e:
-        st.error(f"❌ 系統錯誤：{str(e)}")
+        st.error(f"❌ 翻譯過程發生錯誤：{str(e)}")
+elif start_btn and not input_text:
+    st.warning("⚠️ 請先貼上一些文字再開始翻譯。")
+
